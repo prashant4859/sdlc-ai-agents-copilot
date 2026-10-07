@@ -6,7 +6,7 @@
 - Project Mode: NEW_PROJECT
 - Requirements Baseline: `docs/sdlc/requirements.md` (Story SP-1)
 - Requirements Status: APPROVED
-- Architecture Status: READY_FOR_DESIGN_REVIEW
+- Architecture Status: DESIGN_REVIEW_APPROVED
 - Architecture Version: 1.1
 
 ## 2. Executive Architecture Summary
