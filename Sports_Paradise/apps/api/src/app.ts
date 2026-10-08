@@ -119,6 +119,7 @@ const openApiSpec = {
               schema: {
                 type: "object",
                 required: ["message"],
+                additionalProperties: false,
                 properties: {
                   message: { type: "string", minLength: 1, maxLength: 200 },
                 },
@@ -160,6 +161,7 @@ export function buildApiApp(
     ajv: {
       customOptions: {
         allErrors: true,
+        removeAdditional: false,
       },
     },
   });

@@ -19,9 +19,12 @@ Never use production credentials or real user data in local development.
 
 Compose binds PostgreSQL to `127.0.0.1` only, waits for `pg_isready`, and
 persists data in the named `sports-paradise-postgres-data` volume. The
-container initialization script and SQL create the app role and grant it
-connect plus schema usage/create rights needed by versioned migrations. Do
-not expose the database directly to browser code.
+Compose configuration invokes the checked-in role helper and parameterized SQL on each
+startup. Role creation and credential updates use PostgreSQL-safe quoting;
+provisioning failures stop the database process. The health check authenticates
+as the app role and executes a query, so PostgreSQL is not considered healthy
+until application access works. Do not expose the database directly to browser
+code.
 
 ## Start and Stop
 
@@ -81,6 +84,12 @@ empty project.
 
 ## Diagnostics and Limitations
 
+Run `npm run test:db:provisioning` to exercise role creation with
+shell-significant password characters, credential rotation, app-role
+authentication, and fail-fast configuration using isolated disposable Compose
+projects. The test uses synthetic credentials and removes its own containers
+and volumes.
+
 If `npm run db:up` fails, confirm Docker Compose is installed and running,
 `.env` exists and contains all required settings, and the configured local port
 is available. If the app cannot connect, verify its `DATABASE_URL` uses the
@@ -88,8 +97,11 @@ application—not bootstrap—credentials and that `docker compose ps` reports a
 healthy database. The application reports unavailable-database failures
 explicitly rather than substituting in-memory storage.
 
-Docker Desktop and Docker Compose are installed in the current verification
-environment, but its Linux engine cannot start because Windows Subsystem for
-Linux (WSL) is not installed. Compose configuration parsing succeeds, but
-database startup and role initialization must be exercised with the Linux
-engine running before TASK-003 can be marked verified.
+Docker Compose requires a compatible container runtime to be installed and
+running. On Windows, start Docker Desktop and confirm its selected Linux
+container engine is ready; on other platforms, confirm the Docker daemon or
+compatible Compose runtime is available. If startup still fails, check the
+runtime's own diagnostics, then inspect `docker compose ps` and
+`docker compose logs database`. PostgreSQL startup and application-role
+initialization are covered by the recorded TASK-003 verification and can be
+rechecked with `npm run test:db:provisioning`.

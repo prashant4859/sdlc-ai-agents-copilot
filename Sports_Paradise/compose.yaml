@@ -11,22 +11,45 @@ services:
       - /bin/sh
       - -c
       - |
+        set -eu
+        if [ "$${POSTGRES_APP_USER}" = "$${POSTGRES_USER}" ]; then
+          echo "POSTGRES_APP_USER must differ from POSTGRES_USER." >&2
+          exit 1
+        fi
         docker-entrypoint.sh postgres &
         postgres_pid=$!
+        stop_postgres() {
+          kill "$${postgres_pid}" 2>/dev/null || true
+          wait "$${postgres_pid}" 2>/dev/null || true
+        }
+        trap stop_postgres EXIT
+        attempts=0
         until pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" >/dev/null 2>&1; do
+          if ! kill -0 "$${postgres_pid}" 2>/dev/null; then
+            wait "$${postgres_pid}"
+            exit 1
+          fi
+          attempts=$$((attempts + 1))
+          if [ "$${attempts}" -ge 60 ]; then
+            echo "PostgreSQL did not become ready for application-role provisioning." >&2
+            exit 1
+          fi
           sleep 1
         done
-        psql -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${POSTGRES_APP_USER}') THEN CREATE ROLE \"${POSTGRES_APP_USER}\" LOGIN PASSWORD '${POSTGRES_APP_PASSWORD}'; ELSE ALTER ROLE \"${POSTGRES_APP_USER}\" WITH LOGIN PASSWORD '${POSTGRES_APP_PASSWORD}'; END IF; END \$\$;"
-        psql -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -c "GRANT CONNECT ON DATABASE \"${POSTGRES_DB}\" TO \"${POSTGRES_APP_USER}\";"
-        psql -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -c "GRANT USAGE, CREATE ON SCHEMA public TO \"${POSTGRES_APP_USER}\";"
+        /bin/sh /opt/sports-paradise/init/010-create-app-role.sh
+        trap - EXIT
         wait "$${postgres_pid}"
     ports:
       - 127.0.0.1:${POSTGRES_PORT:?Set POSTGRES_PORT in .env}:5432
     volumes:
       - sports-paradise-postgres-data:/var/lib/postgresql/data
+      - ./database/init:/opt/sports-paradise/init:ro
     healthcheck:
       test:
-        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+        [
+          "CMD-SHELL",
+          'PGPASSWORD="$${POSTGRES_APP_PASSWORD}" psql -h 127.0.0.1 -v ON_ERROR_STOP=1 -U "$${POSTGRES_APP_USER}" -d "$${POSTGRES_DB}" -c "SELECT 1" >/dev/null',
+        ]
       interval: 5s
       timeout: 5s
       retries: 12

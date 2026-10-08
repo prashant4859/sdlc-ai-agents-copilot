@@ -199,5 +199,45 @@ describe("backend API foundation", () => {
       },
     });
     expect(response.json().paths).toHaveProperty("/ready");
+
+    const echoSchema =
+      response.json().paths["/api/echo"].post.requestBody.content[
+        "application/json"
+      ].schema;
+
+    expect(echoSchema).toMatchObject({
+      type: "object",
+      required: ["message"],
+      additionalProperties: false,
+      properties: {
+        message: {
+          type: "string",
+          minLength: 1,
+          maxLength: 200,
+        },
+      },
+    });
+  });
+
+  it("rejects extra fields in echo requests as described by OpenAPI", async () => {
+    const app = buildApiApp({
+      host: "127.0.0.1",
+      port: 3000,
+      databaseUrl: "******127.0.0.1:5432/sports_paradise",
+      environment: "test",
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/echo",
+      payload: {
+        message: "valid",
+        extra: "not allowed by the contract",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("VALIDATION_ERROR");
+    await app.close();
   });
 });

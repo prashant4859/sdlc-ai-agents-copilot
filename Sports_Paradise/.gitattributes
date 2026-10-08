@@ -1,0 +1,2 @@
+database/init/*.sh text eol=lf
+database/init/*.sql text eol=lf

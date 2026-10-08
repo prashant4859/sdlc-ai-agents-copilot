@@ -141,10 +141,16 @@ Added the ignored local `.env` workflow, root lifecycle commands, a bounded
 PostgreSQL connection pool with actionable connectivity errors, migration
 tooling, and database/schema onboarding documentation. The database backend
 was validated end-to-end against the live Docker PostgreSQL instance, and the
-migration path was verified using the application connection string.
+migration path was verified using the application connection string. CR-002
+remediation routes startup through the checked-in psql helper and SQL file,
+quotes role and password values using psql-safe variable handling and
+PostgreSQL format specifiers, fails startup when provisioning fails, and
+requires successful app-role authentication in the health check.
 
 ### Files Added
 
+- `Sports_Paradise/.gitattributes` — preserves LF endings for database init
+  scripts when checked out on Windows.
 - `Sports_Paradise/.env.example`
 - `Sports_Paradise/apps/api/migrations/.gitkeep`
 - `Sports_Paradise/apps/api/src/db/pool.ts`
@@ -153,6 +159,8 @@ migration path was verified using the application connection string.
 - `Sports_Paradise/database/init/010-create-app-role.sh`
 - `Sports_Paradise/database/init/010-create-app-role.sql`
 - `Sports_Paradise/docs/database.md`
+- `Sports_Paradise/scripts/test-db-provisioning.mjs` — isolated Docker
+  integration tests for role provisioning and failure behavior.
 
 ### Files Modified
 
@@ -164,8 +172,14 @@ migration path was verified using the application connection string.
 - `Sports_Paradise/docs/sdlc/impl-plan.md` — TASK-003 execution state,
   verification result, and evidence reference only.
 - `Sports_Paradise/compose.yaml` — adjusted the runtime initialization flow so
-  the app role is created after the container starts without requiring a
-  Windows-host executable bit on the mounted init script.
+  provisioning is fail-fast and service health requires app-role connectivity.
+- `Sports_Paradise/database/init/010-create-app-role.sh` — validates the
+  application/admin role separation and invokes the mounted SQL helper.
+- `Sports_Paradise/database/init/010-create-app-role.sql` — safely quotes
+  role/password values and idempotently updates the non-superuser app role.
+- `Sports_Paradise/docs/database.md` — documents database health semantics and
+  the isolated provisioning integration test.
+- `Sports_Paradise/package.json` — adds the `test:db:provisioning` command.
 
 ### Files Removed
 
@@ -177,6 +191,10 @@ verification; no temporary migration remains.
 - `Sports_Paradise/apps/api/src/db/pool.test.ts` — verifies missing
   `DATABASE_URL` is rejected and unreachable PostgreSQL yields an actionable
   connectivity error.
+- `Sports_Paradise/scripts/test-db-provisioning.mjs` — runs disposable
+  Compose projects with punctuation-heavy passwords, verifies app-role login
+  and non-superuser privileges, tests password rotation on an existing
+  volume, and asserts invalid role configuration fails startup explicitly.
 
 ### Commands / Checks
 
@@ -192,11 +210,23 @@ verification; no temporary migration remains.
 - `git check-ignore .env .env.local` — PASS; `.env.example` remains trackable.
 - Docker Desktop CLI — PASS; Docker 29.8.2 and Compose v5.5.1 are installed and operational.
 - `docker compose config --quiet` — PASS; the resolved configuration parsed successfully.
+- `docker compose config --quiet` — PASS after CR-002 remediation.
 - `docker compose up -d --wait database` — PASS; PostgreSQL reached the healthy state and the app role was created.
 - `docker exec sports_paradise-database-1 psql -U postgres -d sports_paradise -c "SELECT usename, usesuper FROM pg_user WHERE usename IN ('postgres','sports_paradise_app');"` — PASS; both the server admin and the app role are present.
 - `docker exec sports_paradise-database-1 psql -U sports_paradise_app -d sports_paradise -c "SELECT current_user, current_database();"` — PASS; the non-superuser connects successfully.
 - `npm run db:migrate --workspace @sports-paradise/api` — PASS; migration runner completed with `No migrations to run!` and `Migrations complete!`.
 - `git diff --check` — PASS.
+- `npm run test:db:provisioning` — PASS; synthetic passwords containing
+  apostrophe, semicolon, dollar sign, double quote, and backslash authenticated
+  successfully; an existing role's password was updated; invalid role
+  configuration failed startup with an explicit error. Temporary containers
+  and volumes were removed.
+- `npm test` — PASS; 13 API tests and 4 frontend tests.
+- `npm run lint` — PASS.
+- `npm run format:check` — PASS.
+- `npm run typecheck` — PASS across all workspaces.
+- `npm run build` — PASS across all workspaces.
+- `git diff --check` — PASS after CR-002 remediation.
 
 ### Completion Criteria
 
@@ -212,6 +242,9 @@ verification; no temporary migration remains.
 - PASS — Backend-only database pool configuration, explicit connectivity
   failure reporting, non-superuser local app-role initialization, and
   TypeScript migration tooling are implemented and verified.
+- PASS — CR-002: provisioning uses the checked-in safe SQL path, startup fails
+  on invalid role configuration, and health requires successful app-role
+  authentication.
 - PASS — Unit tests, migration-tool CLI/template, lint, type checks, build,
   formatting, dependency audit, and live database validation passed.
 
@@ -255,7 +288,7 @@ COMPLETE
 
 ### Implementation Summary
 
-Implemented the backend API foundation using Fastify and TypeScript. Added environment configuration validation, a sanitized error-handling layer, request schema validation for a foundation echo endpoint, and explicit health/readiness endpoints that distinguish a healthy service from a database-unavailable dependency state. Added an OpenAPI 3.x contract for the API and covered the configuration, validation, readiness, and contract behavior with automated tests.
+Implemented the backend API foundation using Fastify and TypeScript. Added environment configuration validation, a sanitized error-handling layer, request schema validation for a foundation echo endpoint, and explicit health/readiness endpoints that distinguish a healthy service from a database-unavailable dependency state. Added an OpenAPI 3.x contract for the API and covered the configuration, validation, readiness, and contract behavior with automated tests. During CR-001 remediation, aligned the OpenAPI echo request schema with runtime validation and disabled Fastify's automatic removal of additional properties so invalid echo fields are rejected.
 
 ### Files Added
 
@@ -268,6 +301,8 @@ Implemented the backend API foundation using Fastify and TypeScript. Added envir
 
 - `Sports_Paradise/apps/api/src/index.ts` — bootstraps the Fastify server.
 - `Sports_Paradise/apps/api/package.json` — adds backend runtime commands and the `tsx` development runtime needed for local TS execution.
+- `Sports_Paradise/apps/api/src/app.ts` — aligns the OpenAPI echo schema with strict runtime rejection of extra fields.
+- `Sports_Paradise/apps/api/src/app.test.ts` — adds CR-001 schema/runtime consistency regression coverage.
 - `Sports_Paradise/docs/sdlc/impl-plan.md` — updated TASK-004 status and verification metadata only.
 
 ### Files Removed
@@ -276,7 +311,7 @@ None.
 
 ### Tests Added / Updated
 
-- `Sports_Paradise/apps/api/src/app.test.ts` — validates config required fields, readiness success/failure, request validation, and OpenAPI exposure.
+- `Sports_Paradise/apps/api/src/app.test.ts` — validates config required fields, readiness success/failure, request validation, and OpenAPI exposure; also verifies the OpenAPI echo schema disallows additional properties and runtime returns `400 VALIDATION_ERROR` for echo requests with extra fields.
 
 ### Commands / Checks
 
@@ -285,6 +320,10 @@ None.
 - `npm run build` — PASS.
 - `npm run lint` — PASS.
 - `npm run format:check` — PASS.
+- `npm test --workspace @sports-paradise/api` — PASS (13 tests; includes CR-001 contract/runtime consistency regression coverage).
+- `npm run typecheck` — PASS (rerun after CR-001).
+- `npm run lint` — PASS (rerun after CR-001).
+- `npm run format:check` — PASS (rerun after CR-001).
 
 ### Completion Criteria
 
@@ -292,6 +331,7 @@ None.
 - PASS — Health and readiness endpoints report service state and database dependency availability explicitly.
 - PASS — Request validation rejects malformed API payloads with a structured 400 response.
 - PASS — OpenAPI 3.x contract exposes the implemented foundation endpoints.
+- PASS — Echo OpenAPI schema and runtime validation consistently reject additional request properties (CR-001).
 - PASS — Automated tests and repository quality gates pass.
 
 ### Deviations
@@ -516,7 +556,10 @@ contributor workflow. The startup script provisions the database, waits for the
 API and web app to become reachable, and keeps the interface and database
 boundaries intact. The contributor documentation explains the required local
 setup steps, Docker prerequisites, environment-file requirements, and the
-expected readiness checks for the local stack.
+expected readiness checks for the local stack. During CR-003 remediation,
+replaced the obsolete workstation-specific WSL blocker in the database guide
+with general runtime prerequisites and reusable troubleshooting instructions,
+consistent with TASK-003's recorded successful database verification.
 
 ### Files Added
 
@@ -528,6 +571,8 @@ expected readiness checks for the local stack.
   troubleshooting, and contributor onboarding instructions.
 - `Sports_Paradise/.env.example` — added the required frontend and API
   configuration variables for the local environment.
+- `Sports_Paradise/docs/database.md` — removed stale WSL-specific blocker and
+  replaced it with cross-platform container-runtime troubleshooting guidance.
 - `Sports_Paradise/docs/sdlc/impl-plan.md` — updated TASK-006 status,
   verification result, and evidence reference only.
 
@@ -550,6 +595,9 @@ readiness checks for the foundation stack.
 - `npm run lint` — PASS.
 - `npm run typecheck` — PASS across all workspaces.
 - `npm run build` — PASS across all workspaces.
+- Documentation review — PASS; confirmed the obsolete WSL blocker is removed
+  and the guide agrees with recorded TASK-003 PASS evidence.
+- `git diff --check` — PASS after CR-003 documentation update.
 
 ### Completion Criteria
 
@@ -560,6 +608,9 @@ readiness checks for the foundation stack.
 - PASS — Setup documentation covers prerequisites, `.env` expectations,
   runtime troubleshooting, and container health checks without introducing
   production-only assumptions.
+- PASS — CR-003: database onboarding documentation no longer presents a
+  workstation-specific WSL issue as a current blocker and reflects the
+  successful TASK-003 database verification.
 - PASS — Secrets remain outside tracked source files and the browser never
   receives database credentials.
 - PASS — The application stack remains within the approved foundation scope and
