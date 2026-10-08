@@ -773,3 +773,164 @@ None.
 ### Result
 
 COMPLETE
+
+## Verification Finding VR-001
+
+### Related Work Item
+
+- Verification Finding: VR-001
+- Related Task: TASK-003
+- Remediation Status: REMEDIATION_COMPLETE
+- Verification Result: Focused remediation checks PASS
+
+### Traceability
+
+- Requirements: NFR-SEC-001, NFR-REL-001
+- Acceptance Criteria: AC-005
+- Code Review Reference: CR-004 (REJECTED by human; VR-001 remediation was explicitly requested)
+- Architecture References: CMP-003, CMP-004; AD-004
+
+### Remediation Summary
+
+Limited `log_min_error_statement` to `panic` for the single psql provisioning
+session. PostgreSQL continues to log the provisioning error itself, while
+omitting the generated SQL statement that contains the app-role password.
+Added a disposable SQL-failure integration test that requires startup to fail,
+confirms the role-provisioning error remains actionable, and asserts that the
+synthetic credential is absent from Compose output and PostgreSQL logs.
+
+### Files Modified
+
+- `Sports_Paradise/database/init/010-create-app-role.sh`
+- `Sports_Paradise/scripts/test-db-provisioning.mjs`
+
+### Tests Added / Updated
+
+- `Sports_Paradise/scripts/test-db-provisioning.mjs` — added an isolated
+  protected-role SQL failure case, credential-redaction assertion, and
+  diagnostic assertion; executes this security regression case first so its
+  result is visible even if another provisioning scenario later fails.
+
+### Focused Checks
+
+- `npm run test:db:provisioning` — PASS; credential-safe provisioning SQL
+  failure, punctuation-bearing credentials, app-role authentication,
+  credential rotation, and fail-fast invalid role configuration all passed.
+- `npm test` — PASS; 13 API tests and 4 web tests.
+- `npm run lint` — PASS.
+- `npm run typecheck` — PASS across all workspaces.
+- `npm run build` — PASS across all workspaces.
+- `npm run format:check` — PASS across the project.
+- `docker compose config --quiet` — PASS.
+- `npm audit --omit=optional` — PASS; 0 vulnerabilities.
+- `git diff --check` — PASS.
+
+### Escalations
+
+- Requirements Change: None.
+- Architecture Change: None.
+- Implementation Plan Change: None.
+
+### Known Issues
+
+- VR-002 remains active for a separate controlled invocation; the observed
+  intermittent provisioning-suite startup failure and missing Compose
+  diagnostics were not changed as part of VR-001.
+- CR-004 remains REJECTED in the Code Review record; this VR remediation
+  independently removes the reproduced password-bearing SQL log disclosure.
+  Independent Code Review and Verification must confirm the fix.
+
+### Result
+
+REMEDIATION_COMPLETE — CODE REVIEW / REVERIFICATION REQUIRED
+
+## Verification Finding VR-002
+
+### Related Work Item
+
+- Verification Finding: VR-002
+- Related Task: TASK-003
+- Remediation Status: REMEDIATION_COMPLETE
+- Focused Verification Result: PASS; three consecutive complete provisioning
+  integration runs succeeded after the readiness fix.
+
+### Traceability
+
+- Requirements: FR-003, NFR-REL-001
+- Acceptance Criteria: AC-003
+- Architecture References: CMP-003, CMP-004; AD-004
+- Code Review References: None specific to VR-002; VR-001 Code Review Cycle 4
+  predates and does not cover these additional changes.
+
+### Remediation Summary
+
+Replaced the Compose wrapper's `pg_isready` startup gate with an actual
+`SELECT 1` query against the configured database. The prior readiness probe
+could report the temporary PostgreSQL initialization server available before
+the configured database had been created, allowing role provisioning to run
+too early. The first run with improved diagnostics exposed the resulting
+`database does not exist` failure.
+
+Improved the provisioning test harness to include Docker Compose exit status,
+signal, process error, stdout, and stderr when an operation fails. All captured
+diagnostics are redacted against configured environment variables whose names
+indicate passwords, secrets, tokens, or credentials. Applied the same safe
+diagnostics to startup assertions and cleanup errors, and added a harness
+self-check that verifies useful output is retained while a synthetic
+credential is redacted.
+
+### Files Modified
+
+- `Sports_Paradise/compose.yaml` — wait for a successful query to the
+  configured database before running application-role provisioning.
+- `Sports_Paradise/scripts/test-db-provisioning.mjs` — report useful
+  credential-redacted Compose diagnostics, cover failure assertion output,
+  report cleanup errors, and self-check diagnostic redaction.
+- `Sports_Paradise/docs/database.md` — document database-level readiness and
+  safe test diagnostics.
+
+### Tests Added / Updated
+
+- `scripts/test-db-provisioning.mjs` — added a diagnostic formatter self-check
+  requiring captured stdout/stderr to remain useful while synthetic password
+  content is redacted.
+- `npm run test:db:provisioning` — full isolated provisioning integration
+  suite passed three consecutive sequential runs after the Compose readiness
+  fix. Each run covered diagnostics redaction, VR-001 SQL failure credential
+  protection, credential quoting, app-role authentication, password rotation,
+  and fail-fast invalid role configuration.
+
+### Focused Checks
+
+- Initial `npm run test:db:provisioning` after diagnostic improvements —
+  surfaced the prior readiness race explicitly: PostgreSQL accepted a
+  connection before `sports_paradise_test` existed, and the provisioning
+  helper failed with `database does not exist`. The test cleaned up its
+  disposable project and volume.
+- After the readiness fix, `npm run test:db:provisioning` — PASS, 3/3
+  consecutive full runs.
+- `npm test` — PASS; 13 API tests and 4 web tests.
+- `npm run lint` — PASS.
+- `npm run typecheck` — PASS across all workspaces.
+- `npm run build` — PASS across all workspaces.
+- `npm run format:check` — PASS.
+- `docker compose config --quiet` — PASS.
+- `npm audit --omit=optional` — PASS; 0 vulnerabilities.
+- `git diff --check` — PASS after this evidence update.
+
+### Escalations
+
+- Requirements Change: None.
+- Architecture Change: None.
+- Implementation Plan Change: None.
+
+### Known Issues
+
+- VR-001 remains resolved by Verification Cycle 3. These changes preserve its
+  provisioning credential-redaction regression check.
+- CR-004 remains historically `REJECTED` / `CLOSED_REJECTED`; its Code Review
+  disposition was not changed.
+
+### Result
+
+REMEDIATION_COMPLETE — CODE REVIEW / REVERIFICATION REQUIRED

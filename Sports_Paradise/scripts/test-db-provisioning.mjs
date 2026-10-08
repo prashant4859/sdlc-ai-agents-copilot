@@ -9,6 +9,45 @@ const projectRoot = path.resolve(
 );
 const cleanupTargets = [];
 
+function redactSecrets(value, env) {
+  let redactedValue = value;
+
+  for (const [name, secret] of Object.entries(env)) {
+    if (
+      typeof secret === "string" &&
+      secret.length > 0 &&
+      /(PASSWORD|SECRET|TOKEN|CREDENTIAL)/i.test(name)
+    ) {
+      redactedValue = redactedValue.replaceAll(secret, "[REDACTED]");
+    }
+  }
+
+  return redactedValue;
+}
+
+function formatComposeResult(projectName, args, result, env) {
+  const exitDetails = [
+    result.status === null ? "unknown exit code" : `exit code ${result.status}`,
+    result.signal ? `signal ${result.signal}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const details = [
+    `Docker Compose ${args[0]} for isolated project ${projectName} returned ${exitDetails}.`,
+  ];
+
+  if (result.error) {
+    details.push(`Process error: ${redactSecrets(result.error.message, env)}`);
+  }
+
+  details.push(
+    `stdout:\n${redactSecrets(result.stdout?.trim() || "(empty)", env)}`,
+    `stderr:\n${redactSecrets(result.stderr?.trim() || "(empty)", env)}`,
+  );
+
+  return details.join("\n");
+}
+
 function runDockerCompose(projectName, args, env) {
   const result = spawnSync(
     "docker",
@@ -22,7 +61,7 @@ function runDockerCompose(projectName, args, env) {
   );
 
   if (result.error) {
-    throw new Error(`Docker Compose could not run: ${result.error.message}`);
+    throw new Error(formatComposeResult(projectName, args, result, env));
   }
 
   return result;
@@ -32,9 +71,7 @@ function requireSuccessfulRun(projectName, args, env) {
   const result = runDockerCompose(projectName, args, env);
 
   if (result.status !== 0) {
-    throw new Error(
-      `Docker Compose ${args[0]} failed for isolated project ${projectName}.`,
-    );
+    throw new Error(formatComposeResult(projectName, args, result, env));
   }
 
   return result.stdout.trim();
@@ -146,7 +183,10 @@ async function verifyProvisioningFailure() {
 
   if (result.status === 0) {
     throw new Error(
-      "Compose reported success when the app role matched the bootstrap role.",
+      [
+        "Compose reported success when the app role matched the bootstrap role.",
+        formatComposeResult(projectName, ["up"], result, env),
+      ].join("\n"),
     );
   }
 
@@ -161,15 +201,101 @@ async function verifyProvisioningFailure() {
     )
   ) {
     throw new Error(
-      "Compose did not report the app-role provisioning failure explicitly.",
+      [
+        "Compose did not report the app-role provisioning failure explicitly.",
+        formatComposeResult(projectName, ["logs"], logs, env),
+        formatComposeResult(projectName, ["up"], result, env),
+      ].join("\n"),
     );
   }
+}
+
+async function verifyProvisioningSqlFailureDoesNotLogCredential() {
+  const projectName = createProjectName("db-provisioning-sql-failure");
+  const appPassword = "synthetic-sql-failure-password";
+  const env = {
+    POSTGRES_DB: "sports_paradise_test",
+    POSTGRES_USER: "foundation_admin",
+    POSTGRES_PASSWORD: "synthetic-bootstrap-password",
+    POSTGRES_APP_USER: "pg_database_owner",
+    POSTGRES_APP_PASSWORD: appPassword,
+    POSTGRES_PORT: String(await findAvailablePort()),
+  };
+  cleanupTargets.push({ projectName, env });
+
+  const result = runDockerCompose(
+    projectName,
+    ["up", "--detach", "--wait", "database"],
+    env,
+  );
+
+  if (result.status === 0) {
+    throw new Error(
+      [
+        "Compose reported success when PostgreSQL rejected application-role provisioning.",
+        formatComposeResult(projectName, ["up"], result, env),
+      ].join("\n"),
+    );
+  }
+
+  const logs = requireSuccessfulRun(
+    projectName,
+    ["logs", "--no-color", "database"],
+    env,
+  );
+  const failureOutput = `${result.stdout}\n${result.stderr}\n${logs}`;
+
+  if (!/cannot alter reserved roles/i.test(failureOutput)) {
+    const safeOutput = redactSecrets(failureOutput, env);
+    throw new Error(
+      `PostgreSQL output did not contain the expected role-provisioning failure: ${safeOutput}`,
+    );
+  }
+
+  if (failureOutput.includes(appPassword)) {
+    throw new Error(
+      "The application-role credential appeared in provisioning failure output.",
+    );
+  }
+
+  console.log("Credential-safe PostgreSQL provisioning failure check passed.");
+}
+
+function verifyComposeFailureDiagnostics() {
+  const env = { POSTGRES_PASSWORD: "synthetic-compose-diagnostic-password" };
+  const diagnostic = formatComposeResult(
+    "sports-paradise-diagnostics-test",
+    ["up"],
+    {
+      status: 1,
+      signal: null,
+      error: null,
+      stdout: "database exited before becoming healthy",
+      stderr: `password=${env.POSTGRES_PASSWORD}`,
+    },
+    env,
+  );
+
+  if (
+    !diagnostic.includes("database exited before becoming healthy") ||
+    !diagnostic.includes("stderr:") ||
+    diagnostic.includes(env.POSTGRES_PASSWORD) ||
+    !diagnostic.includes("[REDACTED]")
+  ) {
+    throw new Error(
+      "Docker Compose failure diagnostics did not preserve actionable output while redacting credentials.",
+    );
+  }
+
+  console.log("Safe Docker Compose failure diagnostics check passed.");
 }
 
 async function main() {
   let executionError;
 
   try {
+    verifyComposeFailureDiagnostics();
+    await verifyProvisioningSqlFailureDoesNotLogCredential();
     await verifyCredentialHandling();
     await verifyProvisioningFailure();
   } catch (error) {
@@ -186,10 +312,14 @@ async function main() {
       );
 
       if (result.status !== 0) {
-        cleanupErrors.push(projectName);
+        cleanupErrors.push(
+          formatComposeResult(projectName, ["down"], result, env),
+        );
       }
-    } catch {
-      cleanupErrors.push(projectName);
+    } catch (error) {
+      cleanupErrors.push(
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -198,7 +328,7 @@ async function main() {
       [
         executionError,
         new Error(
-          `Could not remove isolated database test projects: ${cleanupErrors.join(", ")}.`,
+          `Could not remove isolated database test projects:\n${cleanupErrors.join("\n")}`,
         ),
       ],
       "Database provisioning checks failed and cleanup was incomplete.",
@@ -211,12 +341,12 @@ async function main() {
 
   if (cleanupErrors.length > 0) {
     throw new Error(
-      `Could not remove isolated database test projects: ${cleanupErrors.join(", ")}.`,
+      `Could not remove isolated database test projects:\n${cleanupErrors.join("\n")}`,
     );
   }
 
   console.log(
-    "Database provisioning integration checks passed: credential quoting, role authentication, credential rotation, and fail-fast provisioning.",
+    "Database provisioning integration checks passed: credential quoting, role authentication, credential rotation, fail-fast configuration, and credential-safe SQL failure logging.",
   );
 }
 

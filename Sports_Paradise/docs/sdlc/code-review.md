@@ -5,14 +5,17 @@
 - Project Name: Sports_Paradise
 - Project Mode: NEW_PROJECT
 - Project Root: `Sports_Paradise`
-- Review Cycle: 3
+- Review Cycle: 5
 - Branch: `copilot/phase1`
-- Base Revision: `7f120fbc137ad02cca6d9fa0f0008381ebc55a53`
-- Reviewed Revision: `65c0bc61fcd51951e2d90484e58a99b91e4a0b75`
-- Working Tree State: Clean at review start. All reviewed Sports_Paradise
-  remediation changes are committed. The latest commit also adds six
-  repository-level `.github/agents/` profiles; those files are outside the
-  Sports_Paradise project root and approved TASK scope and are excluded.
+- Base Revision: `c6f4f88167c515edd75ffc9d15e2bac8cea6748f`
+- Reviewed Revision: Uncommitted working-tree changes relative to the base
+  revision; no commit was created for this review. Cycle 5 reviews only the
+  additional VR-002 remediation on top of the Cycle 4 VR-001 review.
+- Working Tree State: VR-002 changes affect `compose.yaml`,
+  `scripts/test-db-provisioning.mjs`, `docs/database.md`, and the
+  `implementation-log.md` evidence. Previously reviewed VR-001 changes remain
+  present. The pre-existing `docs/sdlc/verification.md` change was preserved
+  and excluded from this review scope.
 - Requirements Baseline: `docs/sdlc/requirements.md`, SP-1, APPROVED
 - Architecture Baseline: `docs/sdlc/architecture.md`, Version 1.1,
   DESIGN_REVIEW_APPROVED
@@ -26,12 +29,12 @@
 
 ## 2. Review Objective
 
-Independently review the latest committed Sports_Paradise implementation
+This artifact records independent Code Review cycles for the Sports_Paradise
+implementation. Review Cycle 5 evaluates the additional VR-002 remediation
 against the approved requirements, architecture, design review, and
-implementation plan. This cycle verifies the committed CR-001, CR-002, and
-CR-003 remediations and confirms the human disposition and rationale for
-CR-004. It does not modify implementation files, decide finding dispositions
-on behalf of the human, or replace the Step 7 verification report.
+implementation plan; preceding cycle results and finding decisions remain
+preserved below. The review does not modify implementation files, decide
+human finding dispositions, or replace Step 7 verification.
 
 ## 3. Review Baseline
 
@@ -563,5 +566,354 @@ implementation handoff is pending.
 - Code Review Status: CODE_REVIEW_APPROVED.
 
 ## 30. Final Decision
+
+CODE_REVIEW_APPROVED
+
+## Review Cycle 5 — VR-002 Remediation
+
+### Review Objective and Baseline
+
+Independently review the VR-002 provisioning-test reliability remediation
+against the approved requirements, architecture, design review, and
+implementation plan. This cycle reviews the additional working-tree changes
+relative to repository base revision
+`c6f4f88167c515edd75ffc9d15e2bac8cea6748f` on branch `copilot/phase1`.
+Changes remain uncommitted. Cycle 4 reviewed the preceding VR-001 changes;
+this review does not replace or alter that cycle's record. The existing
+uncommitted `verification.md` updates and previously reviewed VR-001 changes
+were preserved and are not treated as new VR-002 scope.
+
+Lifecycle gates revalidated:
+
+- Requirements: APPROVED.
+- Architecture: DESIGN_REVIEW_APPROVED.
+- Design Review: DESIGN_REVIEW_APPROVED.
+- Implementation Plan: READY_FOR_IMPLEMENTATION; Approval: APPROVED.
+- Implementation: READY_FOR_CODE_REVIEW.
+- Project Mode: NEW_PROJECT.
+
+### Implementation Scope Reviewed
+
+- Verification Finding: VR-002; related task: TASK-003.
+- Requirements and acceptance: FR-003, NFR-REL-001, AC-003.
+- Architecture: CMP-003, CMP-004; AD-004.
+- Changed VR-002 areas:
+  - `compose.yaml`
+  - `scripts/test-db-provisioning.mjs`
+  - `docs/database.md`
+  - VR-002 remediation evidence in `docs/sdlc/implementation-log.md`
+- Directly related, previously reviewed VR-001 changes were inspected for
+  regression compatibility and preserved.
+- `docs/sdlc/verification.md` was not modified or dispositioned by this
+  reviewer.
+
+### Mandatory Code Review Checklist
+
+| Review Area | Review Question | Result | Findings | Evidence / Notes |
+|---|---|---|---|---|
+| Correctness | Does each component behave as specified in requirements.md? | PASS | None | The Compose wrapper now waits for a successful SQL query against the configured database, rather than accepting a server-ready response before database creation completes. Three consecutive full provisioning suite runs passed. |
+| Security | Are secrets excluded from output? Is user input validated? Are applicable authentication and authorization controls enforced? | PASS | None | Failure diagnostics redact values from configured environment keys that denote passwords, secrets, tokens, or credentials. The diagnostic self-check verifies useful stdout/stderr remains while the synthetic password is absent. No new authentication/authorization behavior is in scope. |
+| Error Handling | Are API failures, missing files, empty repositories and applicable failure conditions handled gracefully? | PASS | None | Nonzero Compose results include exit status, signal/process error where present, and captured stdout/stderr; diagnostic context is also included when failure expectations are unmet and during cleanup failures. The original failure evidence revealed the configured database-not-yet-created race. |
+| Test Coverage | Do tests cover the happy path and applicable Not Found / missing-field edge cases? | PASS | None | Three sequential end-to-end provisioning suite runs exercised successful role setup/login/rotation, forced provisioning failures, credential redaction, and fail-fast behavior. The diagnostic formatter self-check exercises output retention and secret redaction. Not Found/missing-field API cases do not apply to this provisioning-only change. |
+| Code Clarity | Are function and module names self-explanatory? Is the logic easy to follow without explanatory comments? | PASS | None | `redactSecrets` and `formatComposeResult` communicate their roles; readiness now explicitly tests the configured database. |
+| DRY Principle | Is meaningful duplicated logic present that should be consolidated? | PASS | None | Compose output and cleanup failure formatting share one helper; no duplicated provisioning path was added. |
+| Dependency Safety | Do dependency checks identify any known-vulnerable package versions? | PASS | None | No dependencies changed. `npm audit --omit=optional` reported 0 vulnerabilities. |
+
+### Additional SDLC Review Areas
+
+| Review Area | Result | Findings | Evidence / Notes |
+|---|---|---|---|
+| Requirements Compliance | PASS | None | The changes improve repeatable local PostgreSQL setup and actionable failure diagnosis within FR-003, NFR-REL-001, and AC-003; no product scope is added. |
+| Architecture Conformance | PASS | None | PostgreSQL remains locally provisioned by CMP-004 and owned by CMP-003; the readiness query runs within the existing Compose initialization flow, consistent with AD-004. |
+| Data Integrity | PASS | None | Provisioning no longer races ahead of creation of the configured database. Existing role provisioning/rotation checks passed repeatedly. |
+| Reliability | PASS | None | The cause was identified: `pg_isready` accepted the temporary initialization server before the configured database existed. A successful query against the configured database now gates provisioning; the full suite passed 3/3 consecutive runs in this review. |
+| Performance | NOT_APPLICABLE | None | No application request path or approved performance target is changed; the bounded query runs only during local database startup. |
+| Observability | PASS | None | Test failures preserve Compose stdout/stderr and process status while redacting configured secret values. |
+| Compatibility / Migration | NOT_APPLICABLE | None | NEW_PROJECT; no deployed API or existing data migration baseline exists. |
+| Scope Control | PASS | None | Changes are limited to TASK-003 / VR-002 readiness, test diagnostics, related documentation, and implementation evidence. |
+| Documentation | PASS | None | The database guide explains database-level readiness and redacted diagnostics; implementation evidence records cause, changes, tests, and remaining review gate. |
+
+### Review Findings and Summary
+
+No new CR finding was identified in this re-review. The root cause and
+remediation are supported by direct evidence: improved diagnostics first
+exposed a connection to the temporary PostgreSQL server before the configured
+database existed; Compose now waits for `SELECT 1` against that database. The
+full provisioning integration suite passed three consecutive sequential
+runs during independent review. A standalone self-check also verifies that
+the diagnostic formatter retains output and redacts the synthetic password.
+
+This code review approval is not a Step 7 finding disposition. VR-002 remains
+in the verification report pending independent re-verification. VR-001's
+previously verified status and CR-004's historical human rejection are
+unchanged.
+
+| Severity / Disposition | Current Cycle 5 | Finding history |
+|---|---:|---:|
+| CRITICAL | 0 | 0 |
+| HIGH | 0 | 0 |
+| MEDIUM | 0 | 2 (CR-002 resolved; CR-004 rejected) |
+| LOW | 0 | 1 (CR-003 resolved) |
+| INFO | 0 | 0 |
+| Accepted | 0 | 3 historically accepted |
+| Rejected | 0 | 1 (CR-004; decision retained) |
+| Deferred | 0 | 0 |
+| Resolved | 0 | 3 historical findings |
+| Remediation Required | 0 | 0 |
+
+### Review Evidence
+
+- `npm run test:db:provisioning` — PASS, 3/3 consecutive full runs during
+  independent review. Each run covered safe diagnostics, VR-001 SQL-failure
+  credential handling, credential quoting, app-role authentication, rotation,
+  and fail-fast configuration.
+- `npm test` — PASS; 13 API and 4 web tests.
+- `npm run lint`, `npm run typecheck`, and `npm run build` — PASS.
+- `npm run format:check` — PASS.
+- `docker compose config --quiet` — PASS.
+- `npm audit --omit=optional` — PASS; 0 vulnerabilities.
+- `git diff --check` — PASS.
+- Initial diagnostic run before the Compose fix surfaced:
+  `database "sports_paradise_test" does not exist`; temporary projects and
+  volumes were cleaned by the harness.
+- After the fix, repeated full provisioning suite runs passed; no
+  implementation or test files changed after the tested candidate.
+
+### Correctness, Security, and Quality Assessments
+
+- Correctness: PASS — readiness is for the actual configured database, and
+  role provisioning continues only after a successful query.
+- Error diagnostics: PASS — process status and captured streams are available
+  on failing Compose commands and relevant failed assertions.
+- Diagnostic security: PASS — synthetic secret-redaction check passed; values
+  from configured secret-named variables are replaced before diagnostics are
+  emitted.
+- Test quality: PASS — full disposable integration paths passed three
+  consecutive sequential runs; cleanup failures retain their diagnostic
+  context.
+- Architecture conformance: PASS — local PostgreSQL ownership and Compose
+  deployment boundary are unchanged.
+
+### Implementation Remediation Handoff
+
+None. No accepted CR finding requiring additional implementation work was
+identified.
+
+### Human Decisions and Deferred Risks
+
+- No new CR finding requires a human disposition.
+- This review does not record VR-002 as resolved in the verification artifact;
+  Step 7 must independently confirm the remediation.
+- CR-004 remains `REJECTED` / `CLOSED_REJECTED`; its historical disposition
+  was not changed.
+- No finding was deferred in this review cycle.
+
+### Upstream Changes Required
+
+- Requirements Changes Required: None.
+- Architecture Changes Required: None.
+- Implementation Plan Changes Required: None.
+
+### Re-review Results
+
+- Finding reviewed: VR-002.
+- Remediation reviewed: successful-query readiness gate, credential-redacted
+  Compose diagnostics, diagnostic self-check, and setup documentation.
+- Verification performed: three consecutive provisioning suite runs and
+  applicable unit/static/build/dependency checks.
+- Result: No new CR finding; the code changes satisfy this review's scope.
+- Code Review Status: `CODE_REVIEW_APPROVED`.
+- Verification finding VR-002 remains for Step 7 re-verification.
+
+### Final Code Review Gate and Decision
+
+- Unresolved CRITICAL findings: 0.
+- Blocking HIGH findings: 0.
+- Accepted code-change findings still pending: 0.
+- Requirements, architecture, and implementation-plan changes required:
+  None.
+- All seven mandatory checklist areas are explicitly recorded; none is
+  `NOT_VERIFIED`.
+- Correctness, security, error handling, test quality, architecture
+  conformance, and scope control are acceptable for the reviewed VR-002
+  changes.
+- Human Code Review finding history is preserved; CR-004 remains rejected.
+- Deferred risks: None in this cycle. VR-002 remains open only as a verification
+  finding pending Step 7.
+- Code Review Status: `CODE_REVIEW_APPROVED`.
+
+### Final Decision — Review Cycle 5
+
+CODE_REVIEW_APPROVED
+
+## Review Cycle 4 — VR-001 Remediation
+
+### Review Objective and Baseline
+
+Independently review the VR-001 credential-log remediation against the
+approved requirements, architecture, design review, and implementation plan.
+This is a re-review of the working-tree changes relative to base revision
+`c6f4f88167c515edd75ffc9d15e2bac8cea6748f` on branch `copilot/phase1`.
+The implementation changes are uncommitted. The previous reviewed source
+revision is `65c0bc61fcd51951e2d90484e58a99b91e4a0b75`; the later base commit
+changed the review artifact only. The separate user-authored
+`docs/sdlc/verification.md` change was not reviewed or modified.
+
+Lifecycle gates revalidated:
+
+- Requirements: APPROVED.
+- Architecture: DESIGN_REVIEW_APPROVED.
+- Design Review: DESIGN_REVIEW_APPROVED.
+- Implementation Plan: READY_FOR_IMPLEMENTATION; Approval: APPROVED.
+- Implementation: READY_FOR_CODE_REVIEW.
+- Project Mode: NEW_PROJECT.
+
+### Implementation Scope Reviewed
+
+- Verification Finding: VR-001; related implementation task: TASK-003.
+- Requirements and acceptance: NFR-SEC-001, NFR-REL-001, AC-005.
+- Architecture: CMP-003, CMP-004, AD-004; no applicable unresolved Design
+  Review finding.
+- Changed implementation/evidence files:
+  - `database/init/010-create-app-role.sh`
+  - `scripts/test-db-provisioning.mjs`
+  - `docs/sdlc/implementation-log.md`
+- The role SQL and `compose.yaml` were inspected as directly related existing
+  behavior. Neither is changed in this cycle.
+- No dependency manifest, migration, deployment configuration, or unrelated
+  implementation file changed.
+
+### Mandatory Code Review Checklist
+
+| Review Area | Review Question | Result | Findings | Evidence / Notes |
+|---|---|---|---|---|
+| Correctness | Does each component behave as specified in requirements.md? | PASS | None | The psql session setting precedes the role SQL file in the same invocation. Provisioning still fails visibly on SQL error; the focused isolated Compose test confirms failure output remains actionable while excluding the synthetic app password. |
+| Security | Are secrets excluded from output? Is user input validated? Are applicable authentication and authorization controls enforced? | PASS | None | No secret is added to source-controlled configuration or emitted by the tested provisioning-failure path. The test uses synthetic credentials and checks Compose output plus PostgreSQL logs. Authentication/authorization for product operations is not part of TASK-003 or this foundation scope. |
+| Error Handling | Are API failures, missing files, empty repositories and applicable failure conditions handled gracefully? | PASS | None | SQL failure remains a nonzero Compose startup result and its expected reserved-role error remains visible. This database provisioning change does not process API requests, repository contents, or application files. |
+| Test Coverage | Do tests cover the happy path and applicable Not Found / missing-field edge cases? | PASS | None | `npm run test:db:provisioning` passed the new forced SQL-failure credential-redaction case and the existing credential quoting, app-role login, rotation, and fail-fast scenarios. Not Found and API missing-field cases are not applicable to this provisioning change. |
+| Code Clarity | Are function and module names self-explanatory? Is the logic easy to follow without explanatory comments? | PASS | None | The new test name states the security property; the shell comment explains why the session logging setting is changed. Existing helper structure is retained. |
+| DRY Principle | Is meaningful duplicated logic present that should be consolidated? | PASS | None | The change reuses the existing role helper and SQL provisioning path; no duplicate business or security policy is introduced. |
+| Dependency Safety | Do dependency checks identify any known-vulnerable package versions? | PASS | None | No dependency changed. `npm audit --omit=optional` completed and reported 0 vulnerabilities. |
+
+### Additional SDLC Review Areas
+
+| Review Area | Result | Findings | Evidence / Notes |
+|---|---|---|---|
+| Requirements Compliance | PASS | None | The fix enforces secret-safe local configuration/log handling without expanding approved application behavior; maps to NFR-SEC-001 and NFR-REL-001. |
+| Architecture Conformance | PASS | None | PostgreSQL provisioning remains in CMP-003/CMP-004 and follows AD-004; only the psql session used by the existing local provisioning flow is affected. |
+| Data Integrity | PASS | None | The failure test confirms a rejected role alteration fails startup; existing successful role provisioning, login, and rotation scenarios also passed. |
+| Reliability | PASS | None | Failure remains fail-fast and diagnosable; no success-shaped fallback was introduced. |
+| Performance | NOT_APPLICABLE | None | This local, one-time initialization setting does not affect application request throughput; no performance target applies. |
+| Observability | PASS | None | The password-bearing failed SQL statement is not emitted by the tested server-log path, while the provisioning error remains visible. |
+| Compatibility / Migration | NOT_APPLICABLE | None | NEW_PROJECT; no existing deployed API/data compatibility or migration behavior is changed. |
+| Scope Control | PASS | None | Changes are limited to VR-001 in TASK-003, its regression test, and implementation evidence. The separate verification report change is excluded and preserved. |
+| Documentation | PASS | None | `implementation-log.md` records remediation, traceability, evidence, remaining VR-002 scope, and the required independent review/reverification. |
+
+### Review Findings and Summary
+
+No new CR finding was identified in this re-review. The remediation addresses
+the observed VR-001 behavior in the tested PostgreSQL 17.6 Compose environment.
+The provisioning suite passed during this review, including its normal-path
+role authentication and rotation coverage.
+
+CR-004 remains in the historical finding register as `REJECTED` /
+`CLOSED_REJECTED` with the original human rationale. This review neither
+changes that decision nor reopens or renumbers CR-004. The user separately
+requested VR-001 remediation; the new implementation was reviewed on its
+current merits. VR-002 remains outside this review and is not resolved by this
+result.
+
+| Severity / Disposition | Current Cycle 4 | Finding history |
+|---|---:|---:|
+| CRITICAL | 0 | 0 |
+| HIGH | 0 | 0 |
+| MEDIUM | 0 | 2 (CR-002 resolved; CR-004 rejected) |
+| LOW | 0 | 1 (CR-003 resolved) |
+| INFO | 0 | 0 |
+| Accepted | 0 | 3 historically accepted |
+| Rejected | 0 | 1 (CR-004; decision retained) |
+| Deferred | 0 | 0 |
+| Resolved | 0 | 3 historical findings |
+| Remediation Required | 0 | 0 |
+
+### Review Evidence
+
+- `npm run test:db:provisioning` — PASS; the forced PostgreSQL SQL error
+  remained visible, and the synthetic app-role password did not appear in
+  captured Compose output or database logs. Existing credential quoting,
+  app-role authentication, rotation, and fail-fast scenarios also passed.
+- `npm audit --omit=optional` — PASS; 0 vulnerabilities.
+- The implementation invokes psql with
+  `--command="SET log_min_error_statement TO 'panic'"` before the provisioning
+  SQL file, limiting the logging change to that psql session. Existing
+  `ON_ERROR_STOP` behavior is retained.
+- The regression test compares both Compose startup output and PostgreSQL
+  logs against the synthetic app password and requires the expected reserved
+  role failure.
+- Files inspected: `database/init/010-create-app-role.sh`,
+  `database/init/010-create-app-role.sql`, `compose.yaml`,
+  `scripts/test-db-provisioning.mjs`, and the TASK-003 / VR-001 evidence in
+  `docs/sdlc/implementation-log.md`.
+
+### Correctness, Security, and Quality Assessments
+
+- Correctness: PASS — SQL provisioning failure remains a failure and is still
+  reported; the targeted regression test verified the expected error.
+- Security: PASS for this remediation — tested output and PostgreSQL logs did
+  not disclose the synthetic application password.
+- Error handling: PASS — the setting does not suppress the provisioning
+  failure or convert it to success.
+- Test quality: PASS — isolated disposable Compose project, synthetic
+  credentials, explicit failure assertion, error visibility assertion, and
+  credential absence assertion; existing cleanup path runs after the test.
+- Architecture conformance: PASS — database ownership and local provisioning
+  boundaries are unchanged.
+
+### Implementation Remediation Handoff
+
+None. No accepted implementation finding requiring further code change was
+identified.
+
+### Human Decisions and Deferred Risks
+
+- No new CR finding requires a human disposition.
+- CR-004 remains `REJECTED` / `CLOSED_REJECTED`; this re-review does not
+  retroactively change its history.
+- No finding is deferred in this cycle.
+- VR-002 remains active for its separate remediation/review workflow.
+
+### Upstream Changes Required
+
+- Requirements Changes Required: None.
+- Architecture Changes Required: None.
+- Implementation Plan Changes Required: None.
+
+### Re-review Results
+
+- Finding reviewed: VR-001.
+- Remediation inspected: session-scoped PostgreSQL error-statement logging
+  threshold; isolated regression case covering failed role provisioning.
+- Verification performed: provisioning integration suite passed; dependency
+  audit reported 0 vulnerabilities.
+- Result: remediation meets the review outcome; no new CR finding.
+- Code Review finding history: CR-004 disposition remains unchanged.
+
+### Final Code Review Gate and Decision
+
+- Unresolved CRITICAL findings: 0.
+- Blocking HIGH findings: 0.
+- Accepted code-change findings still pending: 0.
+- Requirements, architecture, and implementation-plan changes required:
+  None.
+- All seven mandatory checklist areas are explicitly recorded; none is
+  `NOT_VERIFIED`.
+- Correctness, security, error handling, test quality, architecture
+  conformance, and scope control are acceptable for the reviewed VR-001
+  changes.
+- Human finding history is preserved; CR-004 remains explicitly rejected.
+- Deferred risks: None in this cycle; VR-002 is tracked separately.
+- Code Review Status: `CODE_REVIEW_APPROVED`.
+
+### Final Decision — Review Cycle 4
 
 CODE_REVIEW_APPROVED

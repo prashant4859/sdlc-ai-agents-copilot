@@ -9,8 +9,10 @@ if [ "$POSTGRES_APP_USER" = "$POSTGRES_USER" ]; then
   exit 1
 fi
 
+# Keep dynamically generated password SQL out of PostgreSQL error logs.
 psql \
   --set=ON_ERROR_STOP=1 \
   --username "$POSTGRES_USER" \
   --dbname "$POSTGRES_DB" \
+  --command="SET log_min_error_statement TO 'panic'" \
   --file=/opt/sports-paradise/init/010-create-app-role.sql
