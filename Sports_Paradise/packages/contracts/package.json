@@ -1,0 +1,9 @@
+{
+  "name": "@sports-paradise/contracts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  }
+}

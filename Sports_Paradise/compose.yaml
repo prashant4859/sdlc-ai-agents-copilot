@@ -1,0 +1,36 @@
+services:
+  database:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Copy .env.example to .env and set local database configuration}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_APP_USER: ${POSTGRES_APP_USER:?Set POSTGRES_APP_USER in .env}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in .env}
+    command:
+      - /bin/sh
+      - -c
+      - |
+        docker-entrypoint.sh postgres &
+        postgres_pid=$!
+        until pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" >/dev/null 2>&1; do
+          sleep 1
+        done
+        psql -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${POSTGRES_APP_USER}') THEN CREATE ROLE \"${POSTGRES_APP_USER}\" LOGIN PASSWORD '${POSTGRES_APP_PASSWORD}'; ELSE ALTER ROLE \"${POSTGRES_APP_USER}\" WITH LOGIN PASSWORD '${POSTGRES_APP_PASSWORD}'; END IF; END \$\$;"
+        psql -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -c "GRANT CONNECT ON DATABASE \"${POSTGRES_DB}\" TO \"${POSTGRES_APP_USER}\";"
+        psql -v ON_ERROR_STOP=1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -c "GRANT USAGE, CREATE ON SCHEMA public TO \"${POSTGRES_APP_USER}\";"
+        wait "$${postgres_pid}"
+    ports:
+      - 127.0.0.1:${POSTGRES_PORT:?Set POSTGRES_PORT in .env}:5432
+    volumes:
+      - sports-paradise-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  sports-paradise-postgres-data:
