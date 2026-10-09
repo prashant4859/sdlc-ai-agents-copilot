@@ -1,0 +1,43 @@
+{
+  "name": "sports-paradise",
+  "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "db:down": "docker compose down",
+    "db:up": "docker compose up -d --wait database",
+    "dev": "node ./scripts/local-dev.mjs",
+    "dev:api": "npm run dev --workspace @sports-paradise/api",
+    "dev:web": "npm run dev --workspace @sports-paradise/web -- --host 127.0.0.1",
+    "dev:db": "npm run db:up",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "integration:smoke": "node ./scripts/verify-local-stack.mjs",
+    "lint": "eslint .",
+    "test": "npm run test --workspaces --if-present",
+    "test:db:provisioning": "node ./scripts/test-db-provisioning.mjs",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.6.4",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "eslint": "10.12.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
+    "prettier": "3.9.9",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.1",
+    "vite": "8.3.3",
+    "vitest": "5.0.3"
+  }
+}
